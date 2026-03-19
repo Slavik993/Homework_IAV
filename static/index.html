@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Поиск по видео — фото или текст</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0d12;
+      --surface: #16161d;
+      --border: #2a2a35;
+      --accent: #7c6cf9;
+      --accent-dim: #5b4dd4;
+      --text: #e8e6ed;
+      --text-muted: #8b8798;
+      --green: #4ade80;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    .layout {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    h1 {
+      font-family: 'Unbounded', sans-serif;
+      font-size: 1.75rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .panel h2 {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      align-items: flex-start;
+    }
+    .field {
+      flex: 1;
+      min-width: 200px;
+    }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+    input[type="text"],
+    input[type="file"] {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.9rem;
+    }
+    input[type="file"] {
+      cursor: pointer;
+    }
+    input::file-selector-button {
+      background: var(--accent-dim);
+      color: #fff;
+      border: none;
+      padding: 0.35rem 0.6rem;
+      border-radius: 6px;
+      font-family: inherit;
+      cursor: pointer;
+      margin-right: 0.5rem;
+    }
+    .btn {
+      font-family: inherit;
+      font-weight: 600;
+      padding: 0.65rem 1.25rem;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(124, 108, 249, 0.4);
+    }
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .thumb {
+      width: 120px;
+      height: 68px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .player-wrap {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 1rem;
+    }
+    .player-wrap video {
+      width: 100%;
+      display: block;
+    }
+    .moments {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .moment-link {
+      display: inline-block;
+      padding: 0.4rem 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .moment-link:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .moment-link span {
+      color: var(--text-muted);
+      margin-left: 0.25rem;
+    }
+    .status {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+    }
+    .status.ok { color: var(--green); }
+    .status.err { color: #f87171; }
+    .loading {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #results { margin-top: 1rem; }
+    .empty { color: var(--text-muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <h1>Поиск по видео</h1>
+    <p class="subtitle">Загрузите видео, затем укажите фото или текст (например «человек») — получите ссылки на моменты в плеере.</p>
+
+    <div class="panel">
+      <h2>1. Видео и запрос</h2>
+      <div class="row">
+        <div class="field">
+          <label>Видео</label>
+          <input type="file" id="videoFile" accept=".mp4,.avi,.mov,.mkv,.webm">
+          <p class="status" id="videoStatus"></p>
+        </div>
+        <div class="field">
+          <label>Фото для поиска (опционально)</label>
+          <input type="file" id="imageFile" accept=".jpg,.jpeg,.png,.gif,.webp">
+          <p class="status" id="imageStatus"></p>
+        </div>
+        <div class="field">
+          <label>Текст запроса (например: человек, собака, машина)</label>
+          <input type="text" id="queryText" placeholder="человек">
+        </div>
+      </div>
+      <div class="row" style="margin-top: 1rem;">
+        <button class="btn btn-primary" id="searchBtn" disabled>Найти моменты</button>
+      </div>
+      <p class="status" id="searchStatus"></p>
+    </div>
+
+    <div class="panel">
+      <h2>2. Плеер и моменты</h2>
+      <div class="player-wrap" id="playerWrap" style="display: none;">
+        <video id="video" controls preload="metadata" crossorigin="anonymous"></video>
+      </div>
+      <p class="empty" id="playerPlaceholder">Загрузите видео и нажмите «Найти моменты», чтобы увидеть плеер и ссылки на моменты.</p>
+      <div id="results"></div>
+    </div>
+  </div>
+
+  <script>
+    const videoFile = document.getElementById('videoFile');
+    const imageFile = document.getElementById('imageFile');
+    const queryText = document.getElementById('queryText');
+    const searchBtn = document.getElementById('searchBtn');
+    const searchStatus = document.getElementById('searchStatus');
+    const videoStatus = document.getElementById('videoStatus');
+    const imageStatus = document.getElementById('imageStatus');
+    const video = document.getElementById('video');
+    const playerWrap = document.getElementById('playerWrap');
+    const playerPlaceholder = document.getElementById('playerPlaceholder');
+    const resultsEl = document.getElementById('results');
+
+    let videoFilename = null;
+    let imageFilename = null;
+
+    function setStatus(el, text, ok) {
+      el.textContent = text;
+      el.className = 'status' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+    }
+
+    videoFile.addEventListener('change', async () => {
+      const file = videoFile.files[0];
+      if (!file) {
+        videoFilename = null;
+        setStatus(videoStatus, '');
+        searchBtn.disabled = true;
+        return;
+      }
+      setStatus(videoStatus, 'Загрузка…');
+      const form = new FormData();
+      form.append('video', file);
+      try {
+        const r = await fetch('/api/upload-video', { method: 'POST', body: form });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
+        videoFilename = data.filename;
+        setStatus(videoStatus, 'Загружено: ' + file.name, true);
+        searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
+      } catch (e) {
+        setStatus(videoStatus, e.message, false);
+        videoFilename = null;
+        searchBtn.disabled = true;
+      }
+    });
+
+    imageFile.addEventListener('change', async () => {
+      const file = imageFile.files[0];
+      if (!file) {
+        imageFilename = null;
+        setStatus(imageStatus, '');
+        searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
+        return;
+      }
+      setStatus(imageStatus, 'Загрузка…');
+      const form = new FormData();
+      form.append('image', file);
+      try {
+        const r = await fetch('/api/upload-image', { method: 'POST', body: form });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
+        imageFilename = data.filename;
+        setStatus(imageStatus, 'Загружено: ' + file.name, true);
+        searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
+      } catch (e) {
+        setStatus(imageStatus, e.message, false);
+        imageFilename = null;
+        searchBtn.disabled = !(videoFilename && queryText.value.trim());
+      }
+    });
+
+    queryText.addEventListener('input', () => {
+      searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
+    });
+
+    searchBtn.addEventListener('click', async () => {
+      if (!videoFilename || (!queryText.value.trim() && !imageFilename)) return;
+      searchBtn.disabled = true;
+      searchStatus.innerHTML = '<span class="loading"></span> Поиск моментов… (первый раз может занять время — загрузка модели)';
+      searchStatus.className = 'status';
+
+      const form = new FormData();
+      form.append('video_filename', videoFilename);
+      if (queryText.value.trim()) form.append('query_text', queryText.value.trim());
+      if (imageFilename) form.append('image_filename', imageFilename);
+      form.append('top_k', '15');
+      form.append('fps_sample', '1.0');
+      form.append('max_frames', '300');
+
+      try {
+        const r = await fetch('/api/search', { method: 'POST', body: form });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Ошибка поиска');
+
+        video.src = data.video_url;
+        playerWrap.style.display = 'block';
+        playerPlaceholder.style.display = 'none';
+
+        const moments = data.moments || [];
+        if (moments.length === 0) {
+          resultsEl.innerHTML = '<p class="empty">Моменты не найдены. Попробуйте другой запрос или фото.</p>';
+        } else {
+          resultsEl.innerHTML = '<p class="status ok">Найдено моментов: ' + moments.length + '</p><div class="moments"></div>';
+          const list = resultsEl.querySelector('.moments');
+          moments.forEach(m => {
+            const a = document.createElement('a');
+            a.href = '#';
+            a.className = 'moment-link';
+            a.textContent = formatTime(m.timestamp);
+            a.appendChild(document.createTextNode(' '));
+            const span = document.createElement('span');
+            span.textContent = '(' + (m.score ? (m.score * 100).toFixed(0) + '%' : '') + ')';
+            a.appendChild(span);
+            a.addEventListener('click', (e) => {
+              e.preventDefault();
+              video.currentTime = m.timestamp;
+              video.play();
+            });
+            list.appendChild(a);
+          });
+        }
+        setStatus(searchStatus, 'Готово. Нажмите на время — плеер перейдёт к моменту.', true);
+      } catch (e) {
+        searchStatus.textContent = e.message;
+        searchStatus.className = 'status err';
+      }
+      searchBtn.disabled = false;
+    });
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+  </script>
+</body>
+</html>
