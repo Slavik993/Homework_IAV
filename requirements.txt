@@ -14,3 +14,7 @@ flask-cors>=4.0.0
 # Утилиты
 numpy>=1.24.0
 tqdm>=4.65.0
+
+# Латентное представление лиц (ArcFace / InsightFace)
+insightface>=0.7.3
+onnxruntime>=1.16.0

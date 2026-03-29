@@ -194,10 +194,22 @@
 <body>
   <div class="layout">
     <h1>Поиск по видео</h1>
-    <p class="subtitle">Загрузите видео, затем укажите фото или текст (например «человек») — получите ссылки на моменты в плеере.</p>
+    <p class="subtitle">
+      <strong>Семантика (CLIP):</strong> фото и/или текст.<br>
+      <strong>Лицо (латент):</strong> эталонное фото лица — поиск фрагментов в латентном пространстве; кадры группируются в интервалы, каждый фрагмент не длиннее 1 с.
+    </p>
 
     <div class="panel">
-      <h2>1. Видео и запрос</h2>
+      <h2>1. Режим и данные</h2>
+      <div class="row" style="margin-bottom: 1rem;">
+        <div class="field">
+          <label>Режим поиска</label>
+          <select id="searchMode" style="width:100%;padding:0.6rem 0.75rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:0.9rem;">
+            <option value="clip">Семантика (CLIP) — текст и/или картинка</option>
+            <option value="face">Лицо — латентное представление (эталон лица)</option>
+          </select>
+        </div>
+      </div>
       <div class="row">
         <div class="field">
           <label>Видео</label>
@@ -205,11 +217,11 @@
           <p class="status" id="videoStatus"></p>
         </div>
         <div class="field">
-          <label>Фото для поиска (опционально)</label>
+          <label id="imageLabel">Фото для поиска (опционально в режиме CLIP; в режиме «лицо» — обязательно)</label>
           <input type="file" id="imageFile" accept=".jpg,.jpeg,.png,.gif,.webp">
           <p class="status" id="imageStatus"></p>
         </div>
-        <div class="field">
+        <div class="field" id="textFieldWrap">
           <label>Текст запроса (например: человек, собака, машина)</label>
           <input type="text" id="queryText" placeholder="человек">
         </div>
@@ -234,6 +246,9 @@
     const videoFile = document.getElementById('videoFile');
     const imageFile = document.getElementById('imageFile');
     const queryText = document.getElementById('queryText');
+    const searchMode = document.getElementById('searchMode');
+    const textFieldWrap = document.getElementById('textFieldWrap');
+    const imageLabel = document.getElementById('imageLabel');
     const searchBtn = document.getElementById('searchBtn');
     const searchStatus = document.getElementById('searchStatus');
     const videoStatus = document.getElementById('videoStatus');
@@ -246,6 +261,33 @@
     let videoFilename = null;
     let imageFilename = null;
 
+    function isFaceMode() {
+      return searchMode.value === 'face';
+    }
+
+    function updateModeUi() {
+      const face = isFaceMode();
+      textFieldWrap.style.display = face ? 'none' : 'block';
+      imageLabel.textContent = face
+        ? 'Эталон лица (обязательно — чёткий портрет)'
+        : 'Фото для поиска (опционально)';
+      refreshSearchEnabled();
+    }
+
+    function refreshSearchEnabled() {
+      if (!videoFilename) {
+        searchBtn.disabled = true;
+        return;
+      }
+      if (isFaceMode()) {
+        searchBtn.disabled = !imageFilename;
+      } else {
+        searchBtn.disabled = !(queryText.value.trim() || imageFilename);
+      }
+    }
+
+    searchMode.addEventListener('change', updateModeUi);
+
     function setStatus(el, text, ok) {
       el.textContent = text;
       el.className = 'status' + (ok === true ? ' ok' : ok === false ? ' err' : '');
@@ -256,7 +298,7 @@
       if (!file) {
         videoFilename = null;
         setStatus(videoStatus, '');
-        searchBtn.disabled = true;
+        refreshSearchEnabled();
         return;
       }
       setStatus(videoStatus, 'Загрузка…');
@@ -268,11 +310,11 @@
         if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
         videoFilename = data.filename;
         setStatus(videoStatus, 'Загружено: ' + file.name, true);
-        searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
+        refreshSearchEnabled();
       } catch (e) {
         setStatus(videoStatus, e.message, false);
         videoFilename = null;
-        searchBtn.disabled = true;
+        refreshSearchEnabled();
       }
     });
 
@@ -281,7 +323,7 @@
       if (!file) {
         imageFilename = null;
         setStatus(imageStatus, '');
-        searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
+        refreshSearchEnabled();
         return;
       }
       setStatus(imageStatus, 'Загрузка…');
@@ -293,31 +335,39 @@
         if (!r.ok) throw new Error(data.error || 'Ошибка загрузки');
         imageFilename = data.filename;
         setStatus(imageStatus, 'Загружено: ' + file.name, true);
-        searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
+        refreshSearchEnabled();
       } catch (e) {
         setStatus(imageStatus, e.message, false);
         imageFilename = null;
-        searchBtn.disabled = !(videoFilename && queryText.value.trim());
+        refreshSearchEnabled();
       }
     });
 
-    queryText.addEventListener('input', () => {
-      searchBtn.disabled = !(videoFilename && (queryText.value.trim() || imageFilename));
-    });
+    queryText.addEventListener('input', refreshSearchEnabled);
 
     searchBtn.addEventListener('click', async () => {
-      if (!videoFilename || (!queryText.value.trim() && !imageFilename)) return;
+      if (!videoFilename) return;
+      if (isFaceMode() && !imageFilename) return;
+      if (!isFaceMode() && !queryText.value.trim() && !imageFilename) return;
       searchBtn.disabled = true;
       searchStatus.innerHTML = '<span class="loading"></span> Поиск моментов… (первый раз может занять время — загрузка модели)';
       searchStatus.className = 'status';
 
       const form = new FormData();
       form.append('video_filename', videoFilename);
+      form.append('search_mode', isFaceMode() ? 'face' : 'clip');
       if (queryText.value.trim()) form.append('query_text', queryText.value.trim());
       if (imageFilename) form.append('image_filename', imageFilename);
       form.append('top_k', '15');
       form.append('fps_sample', '1.0');
       form.append('max_frames', '300');
+      if (isFaceMode()) {
+        form.append('face_fps_sample', '0.5');
+        form.append('face_max_frames', '2000');
+        form.append('face_threshold', '0.35');
+        form.append('merge_gap_sec', '0.4');
+        form.append('max_fragment_sec', '1');
+      }
 
       try {
         const r = await fetch('/api/search', { method: 'POST', body: form });
@@ -329,29 +379,44 @@
         playerPlaceholder.style.display = 'none';
 
         const moments = data.moments || [];
+        const fragments = data.fragments || [];
+        const face = data.search_mode === 'face';
         if (moments.length === 0) {
-          resultsEl.innerHTML = '<p class="empty">Моменты не найдены. Попробуйте другой запрос или фото.</p>';
+          resultsEl.innerHTML = '<p class="empty">Фрагменты не найдены. Попробуйте другой эталон или порог.</p>';
         } else {
-          resultsEl.innerHTML = '<p class="status ok">Найдено моментов: ' + moments.length + '</p><div class="moments"></div>';
+          let header = '<p class="status ok">Найдено: ' + moments.length;
+          if (face && fragments.length) {
+            header += ' (интервалы по кадрам, длина каждого ≤ 1 с)';
+          }
+          header += '</p>';
+          resultsEl.innerHTML = header + '<div class="moments"></div>';
           const list = resultsEl.querySelector('.moments');
           moments.forEach(m => {
             const a = document.createElement('a');
             a.href = '#';
             a.className = 'moment-link';
-            a.textContent = formatTime(m.timestamp);
+            const t0 = m.start != null ? m.start : m.timestamp;
+            const t1 = m.end != null ? m.end : m.timestamp;
+            if (face && m.start != null && m.end != null && m.end !== m.start) {
+              a.textContent = formatTime(t0) + ' — ' + formatTime(t1);
+            } else {
+              a.textContent = formatTime(m.timestamp != null ? m.timestamp : t0);
+            }
             a.appendChild(document.createTextNode(' '));
             const span = document.createElement('span');
-            span.textContent = '(' + (m.score ? (m.score * 100).toFixed(0) + '%' : '') + ')';
+            span.textContent = '(' + (m.score != null ? (m.score * 100).toFixed(0) + '%' : '') + ')';
             a.appendChild(span);
             a.addEventListener('click', (e) => {
               e.preventDefault();
-              video.currentTime = m.timestamp;
+              video.currentTime = m.timestamp != null ? m.timestamp : t0;
               video.play();
             });
             list.appendChild(a);
           });
         }
-        setStatus(searchStatus, 'Готово. Нажмите на время — плеер перейдёт к моменту.', true);
+        setStatus(searchStatus, face
+          ? 'Готово (латент лиц). Клик — переход к началу фрагмента.'
+          : 'Готово. Нажмите на время — плеер перейдёт к моменту.', true);
       } catch (e) {
         searchStatus.textContent = e.message;
         searchStatus.className = 'status err';
@@ -362,8 +427,14 @@
     function formatTime(sec) {
       const m = Math.floor(sec / 60);
       const s = Math.floor(sec % 60);
+      const ms = Math.round((sec % 1) * 100);
+      if (ms > 0) {
+        return m + ':' + (s < 10 ? '0' : '') + s + '.' + (ms < 10 ? '0' : '') + ms;
+      }
       return m + ':' + (s < 10 ? '0' : '') + s;
     }
+
+    updateModeUi();
   </script>
 </body>
 </html>

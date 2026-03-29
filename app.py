@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from video_search import load_clip, search_moments
+from face_latent import load_face_app, search_face_latent
 
 app = Flask(__name__, static_folder="static")
 CORS(app)
@@ -28,12 +29,14 @@ def allowed_file(filename, ext_set):
 
 # Глобальная загрузка модели при старте (ленивая при первом поиске)
 _clip_state = {"model": None, "processor": None, "device": None}
-
-
 def get_clip():
     if _clip_state["model"] is None:
         _clip_state["model"], _clip_state["processor"], _clip_state["device"] = load_clip()
     return _clip_state["model"], _clip_state["processor"], _clip_state["device"]
+
+
+def get_face():
+    return load_face_app()
 
 
 @app.route("/")
@@ -103,14 +106,17 @@ def search():
     video_filename = data.get("video_filename") or data.get("video")
     query_text = (data.get("query_text") or data.get("text") or "").strip()
     image_filename = data.get("image_filename") or data.get("image")
+    search_mode = (data.get("search_mode") or data.get("mode") or "clip").strip().lower()
     top_k = int(data.get("top_k", 15))
     fps_sample = float(data.get("fps_sample", 1.0))
     max_frames = int(data.get("max_frames", 300))
+    # Режим «лицо»: порог сходства в латентном пространстве, слияние кадров, макс. длина фрагмента (сек)
+    face_threshold = float(data.get("face_threshold", 0.35))
+    merge_gap_sec = float(data.get("merge_gap_sec", 0.4))
+    max_fragment_sec = float(data.get("max_fragment_sec", 1.0))
 
     if not video_filename:
         return jsonify({"error": "Укажите video_filename (после загрузки видео)"}), 400
-    if not query_text and not image_filename:
-        return jsonify({"error": "Укажите текст запроса и/или загрузите фото"}), 400
 
     video_path = Path(app.config["UPLOAD_FOLDER"]) / secure_filename(video_filename)
     if not video_path.is_file():
@@ -121,6 +127,33 @@ def search():
         img_path = Path(app.config["UPLOAD_FOLDER"]) / secure_filename(image_filename)
         if img_path.is_file():
             query_image = str(img_path)
+
+    if search_mode == "face":
+        if not query_image:
+            return jsonify({"error": "Режим «лицо»: загрузите эталонное фото с лицом"}), 400
+        try:
+            app_face = get_face()
+            fragments, moments = search_face_latent(
+                str(video_path),
+                query_image_path=query_image,
+                fps_sample=float(data.get("face_fps_sample", fps_sample)),
+                max_frames=int(data.get("face_max_frames", max_frames)),
+                similarity_threshold=face_threshold,
+                merge_gap_sec=merge_gap_sec,
+                max_fragment_sec=max_fragment_sec,
+                app=app_face,
+            )
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "video_url": f"/api/video/{video_filename}",
+            "search_mode": "face",
+            "moments": moments,
+            "fragments": fragments,
+        })
+
+    if not query_text and not image_filename:
+        return jsonify({"error": "Укажите текст запроса и/или загрузите фото (или выберите режим «лицо»)"}), 400
 
     model, processor, device = get_clip()
     try:
@@ -140,7 +173,9 @@ def search():
 
     return jsonify({
         "video_url": f"/api/video/{video_filename}",
+        "search_mode": "clip",
         "moments": moments,
+        "fragments": [],
     })
 
 
